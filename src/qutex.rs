@@ -281,7 +281,7 @@ mod tests {
     use super::*;
     use futures::FutureExt;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn simple() {
         let val = Qutex::from(999i32);
 
@@ -308,7 +308,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn concurrent() {
         let thread_count = 20;
         let mut threads = Vec::with_capacity(thread_count);
@@ -355,7 +355,7 @@ mod tests {
         // TODO: FINISH ME
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn explicit_unlock() {
         let lock = Qutex::from(true);
 

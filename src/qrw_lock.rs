@@ -878,7 +878,7 @@ mod tests {
     use super::*;
     use futures::{future, FutureExt, TryFutureExt};
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn simple() {
         let lock = QrwLock::from(0i32);
 
@@ -955,7 +955,7 @@ mod tests {
     // * TODO: *Actually* determine whether or not the lock acquisition order is
     //   upheld.
     //
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn concurrent() {
         let start_val = 0i32;
         let lock = QrwLock::new(start_val);
@@ -1004,7 +1004,7 @@ mod tests {
         assert_eq!(*guard, start_val);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn read_write_thread_loop() {
         let lock = QrwLock::new(vec![0usize; 1 << 13]);
         let loop_count = 15;
@@ -1049,7 +1049,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn multiple_upgrades() {
         let lock = QrwLock::new(0usize);
         let upgrade_count = 12;
