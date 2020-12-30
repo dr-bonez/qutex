@@ -5,13 +5,15 @@
 //   unsafe.
 
 use crossbeam::queue::SegQueue;
-use futures::sync::oneshot::{self, Canceled, Receiver, Sender};
-use futures::{Future, Poll};
+use futures::channel::oneshot::{self, Canceled, Receiver, Sender};
 use std::cell::UnsafeCell;
+use std::future::Future;
 use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 /// Allows access to the data contained within a lock just like a mutex guard.
 #[derive(Debug)]
@@ -66,31 +68,28 @@ impl<T> FutureGuard<T> {
             rx: rx,
         }
     }
-
-    /// Blocks the current thread until this future resolves.
-    #[inline]
-    pub fn wait(self) -> Result<Guard<T>, Canceled> {
-        <Self as Future>::wait(self)
-    }
 }
 
 impl<T> Future for FutureGuard<T> {
-    type Item = Guard<T>;
-    type Error = Canceled;
+    type Output = Result<Guard<T>, Canceled>;
 
     #[inline]
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        if self.qutex.is_some() {
-            unsafe { self.qutex.as_ref().unwrap().process_queue() }
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        unsafe {
+            let s = self.get_mut();
+            if s.qutex.is_some() {
+                s.qutex.as_ref().unwrap().process_queue();
 
-            match self.rx.poll() {
-                Ok(status) => Ok(status.map(|_| Guard {
-                    qutex: self.qutex.take().unwrap(),
-                })),
-                Err(e) => Err(e.into()),
+                match Receiver::poll(Pin::new(&mut s.rx), cx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(Ok(Guard {
+                        qutex: s.qutex.take().unwrap(),
+                    })),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(e.into())),
+                    Poll::Pending => Poll::Pending,
+                }
+            } else {
+                panic!("FutureGuard::poll: Task already completed.");
             }
-        } else {
-            panic!("FutureGuard::poll: Task already completed.");
         }
     }
 }
@@ -224,7 +223,7 @@ impl<T> Qutex<T> {
             // Unlocked:
             0 => {
                 loop {
-                    if let Some(req) = self.inner.queue.pop().ok() {
+                    if let Some(req) = self.inner.queue.pop() {
                         // If there is a send error, a requester has dropped
                         // its receiver so just go to the next.
                         if req.tx.send(()).is_err() {
@@ -280,23 +279,23 @@ impl<T> Clone for Qutex<T> {
 // Woefully incomplete:
 mod tests {
     use super::*;
-    use futures::Future;
+    use futures::FutureExt;
 
-    #[test]
-    fn simple() {
+    #[tokio::test]
+    async fn simple() {
         let val = Qutex::from(999i32);
 
         println!("Reading val...");
         {
             let future_guard = val.clone().lock();
-            let guard = future_guard.wait().unwrap();
+            let guard = future_guard.await.unwrap();
             println!("val: {}", *guard);
         }
 
         println!("Storing new val...");
         {
             let future_guard = val.clone().lock();
-            let mut guard = future_guard.wait().unwrap();
+            let mut guard = future_guard.await.unwrap();
 
             *guard = 5;
         }
@@ -304,55 +303,45 @@ mod tests {
         println!("Reading val...");
         {
             let future_guard = val.clone().lock();
-            let guard = future_guard.wait().unwrap();
+            let guard = future_guard.await.unwrap();
             println!("val: {}", *guard);
         }
     }
 
-    #[test]
-    fn concurrent() {
-        use std::thread;
-
+    #[tokio::test]
+    async fn concurrent() {
         let thread_count = 20;
         let mut threads = Vec::with_capacity(thread_count);
         let start_val = 0i32;
         let qutex = Qutex::new(start_val);
 
-        for i in 0..thread_count {
+        for _ in 0..thread_count {
             let future_guard = qutex.clone().lock();
 
-            let future_write = future_guard.and_then(|mut guard| {
-                *guard += 1;
-                Ok(())
+            let future_write = future_guard.map(|res| {
+                res.and_then(|mut guard| {
+                    *guard += 1;
+                    Ok(())
+                })
             });
 
-            threads.push(
-                thread::Builder::new()
-                    .name(format!("test_thread_{}", i))
-                    .spawn(|| future_write.wait().unwrap())
-                    .unwrap(),
-            );
+            threads.push(tokio::spawn(async { future_write.await.unwrap() }));
         }
 
-        for i in 0..thread_count {
+        for _ in 0..thread_count {
             let future_guard = qutex.clone().lock();
 
-            threads.push(
-                thread::Builder::new()
-                    .name(format!("test_thread_{}", i + thread_count))
-                    .spawn(|| {
-                        let mut guard = future_guard.wait().unwrap();
-                        *guard -= 1;
-                    })
-                    .unwrap(),
-            )
+            threads.push(tokio::spawn(async {
+                let mut guard = future_guard.await.unwrap();
+                *guard -= 1;
+            }));
         }
 
         for thread in threads {
-            thread.join().unwrap();
+            thread.await.unwrap();
         }
 
-        let guard = qutex.clone().lock().wait().unwrap();
+        let guard = qutex.clone().lock().await.unwrap();
         assert_eq!(*guard, start_val);
     }
 
@@ -366,15 +355,15 @@ mod tests {
         // TODO: FINISH ME
     }
 
-    #[test]
-    fn explicit_unlock() {
+    #[tokio::test]
+    async fn explicit_unlock() {
         let lock = Qutex::from(true);
 
-        let mut guard_0 = lock.clone().lock().wait().unwrap();
+        let mut guard_0 = lock.clone().lock().await.unwrap();
         *guard_0 = false;
         let _ = Guard::unlock(guard_0);
         // Will deadlock if this doesn't work:
-        let guard_1 = lock.clone().lock().wait().unwrap();
+        let guard_1 = lock.clone().lock().await.unwrap();
         assert!(*guard_1 == false);
     }
 }

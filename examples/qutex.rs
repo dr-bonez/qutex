@@ -1,11 +1,11 @@
 extern crate futures;
-extern crate qutex;
+extern crate qutex_2;
 
-use futures::Future;
-use qutex::Qutex;
-use std::thread;
+use futures::FutureExt;
+use qutex_2::Qutex;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let thread_count = 100;
     let mut threads = Vec::with_capacity(thread_count);
     let start_val = 0;
@@ -22,22 +22,24 @@ fn main() {
         // will resolve to a `Guard` providing mutable access to the protected
         // value. The guard can be passed between futures combinators and will
         // unlock the `Qutex` when dropped.
-        let future_add = future_val.map(|mut val| {
-            *val += 1;
+        let future_add = future_val.map(|res| {
+            res.map(|mut val| {
+                *val += 1;
+            })
         });
 
         // Spawn a thread which blocks upon completion of the above lock and
         // add operations.
-        threads.push(thread::spawn(|| {
-            future_add.wait().unwrap();
+        threads.push(tokio::spawn(async {
+            future_add.await.unwrap();
         }));
     }
 
     for thread in threads {
-        thread.join().unwrap();
+        thread.await.unwrap();
     }
 
-    let val = qutex.lock().wait().unwrap();
+    let val = qutex.lock().await.unwrap();
     assert_eq!(*val, start_val + thread_count);
     println!("Qutex final value: {}", *val);
 }

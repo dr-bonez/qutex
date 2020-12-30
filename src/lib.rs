@@ -11,9 +11,6 @@
 extern crate crossbeam;
 extern crate futures;
 
-#[cfg(feature = "async_await")]
-mod async_await;
-
 mod qrw_lock;
 mod qutex;
 
@@ -21,6 +18,3 @@ pub use self::qrw_lock::{
     FutureReadGuard, FutureWriteGuard, QrwLock, QrwRequest, ReadGuard, RequestKind, WriteGuard,
 };
 pub use self::qutex::{FutureGuard, Guard, Qutex, Request};
-
-#[cfg(feature = "async_await")]
-pub use async_await::*;

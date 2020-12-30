@@ -1,31 +1,26 @@
 [package]
-name = "qutex"
-version = "0.2.3"
-authors = ["Nick Sanders <cogciprocate@gmail.com>"]
+name = "qutex-2"
+version = "0.3.0"
+authors = [
+	"Nick Sanders <cogciprocate@gmail.com>",
+	"Aiden McClelland <me@drbonez.dev>",
+]
 license = "MIT"
 description = """\
 	Synchronization mechanisms that rely on lock-free and other \
 	non-(thread)blocking techniques, such as Rust futures, to guarantee \
 	mutually exclusive or shared exclusive access to data."""
 documentation = "https://docs.rs/qutex"
-homepage = "https://github.com/cogciprocate/qutex"
-repository = "https://github.com/cogciprocate/qutex"
+homepage = "https://github.com/dr-bonez/qutex"
+repository = "https://github.com/dr-bonez/qutex"
 readme = "README.md"
 keywords = ["futures", "async", "data-structures", "mutex", "lock"]
 categories = ["asynchronous", "concurrency", "data-structures"]
 edition = "2018"
 
-[features]
-default = []
-async_await = ["futures03"]
-
 [dependencies]
-crossbeam = "0.7"
-futures = "0.1"
+crossbeam = "0.8.0"
+futures = "0.3.8"
 
-[dependencies.futures03]
-package = "futures-preview"
-version = "0.3.0-alpha.14"
-features = ["compat"]
-optional = true
-
+[dev-dependencies]
+tokio = { version = "1.0.1", features = ["full"] }

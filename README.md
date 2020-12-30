@@ -1,4 +1,6 @@
-# Qutex [![](http://meritbadge.herokuapp.com/qutex)](https://crates.io/crates/qutex) [![](https://docs.rs/qutex/badge.svg)](https://docs.rs/qutex)
+# Qutex [![](http://meritbadge.herokuapp.com/qutex-2)](https://crates.io/crates/qutex-2) [![](https://docs.rs/qutex-2/badge.svg)](https://docs.rs/qutex-2)
+
+Forked from https://github.com/cogciprocate/qutex since it is no longer maintained.
 
 Non-thread-blocking queue-backed data locks based on Rust futures.
 
@@ -13,7 +15,7 @@ Includes futures capable versions of `Mutex` and `RwLock`.
 
 ```toml
 [dependencies]
-qutex = "0.2"
+qutex-2 = "0.3"
 ```
 
 `main.rs`:
